@@ -20,7 +20,7 @@ server.listen(PORT, () => {
 // ==========================================
 const botOptions = {
     host: 'zenmc.seedloaf.gg', 
-    username: 'AFK_Bot', // Put your bot username here
+    username: 'rezee', // Put your bot username here
     version: '1.20.1',   // Set this to your exact server version to block early pings
     connectTimeout: 30000,          
     checkTimeoutInterval: 35000    
