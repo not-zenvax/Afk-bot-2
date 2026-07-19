@@ -1,6 +1,6 @@
 const mineflayer = require('mineflayer');
 const http = require('http');
-// FIXED: Capitalized 'R' to match your exact file name 'leaveRejoin.js'
+// Capitalized 'R' to match your file name 'leaveRejoin.js'
 const setupLeaveRejoin = require('./leaveRejoin');
 
 // ==========================================
@@ -21,10 +21,7 @@ server.listen(PORT, () => {
 // ==========================================
 const botOptions = {
     host: 'zenmc.seedloaf.gg', // Your Seedloaf server address
-    username: 'AFK_Bot',
-
-    // CRITICAL FOR SEEDLOAF: Do NOT include 'port: 25565'. 
-    // Omitting it forces Mineflayer to resolve your new SRV port on every restart.
+    username: 'AFK_Bot',       // Change this to your bot's registered ingame name
 
     // CRITICAL FOR TIMEOUTS: Prevents the "no spawn received" hanging bug
     connectTimeout: 25000,          // Abort connection if login takes over 25 seconds
@@ -65,13 +62,22 @@ function createBotInstance() {
 
     bot.on('spawn', () => {
         console.log('[Index] Success! Bot has spawned into the Minecraft world.');
+        
+        // CRITICAL FOR CRACKED SERVERS: Automatically authenticates the bot.
+        // Wait 1.5 seconds after spawning to ensure the server is ready to receive chat.
+        setTimeout(() => {
+            if (bot && bot.chat) {
+                // CHANGE "yourpassword123" to the password you registered for the bot!
+                bot.chat('/login yourpassword123'); 
+                console.log('[Index] Sent /login command to the server.');
+            }
+        }, 1500);
     });
 
     // Catch early network/handshake errors before leaveRejoin can handle them
     bot.on('error', (err) => {
         console.log(`[Index Network Error] ${err.message}`);
         
-        // If it gets caught in a login hang or timeout, force-kill the connection socket
         if (err.message.includes('timeout') || err.message.includes('spawn')) {
             console.log('[Index] Catching connection hang. Forcing socket closure...');
             try {
