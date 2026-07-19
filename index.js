@@ -1,12 +1,11 @@
 const mineflayer = require('mineflayer');
 const http = require('http');
-const setupLeaveRejoin = require('./leavejoin');
+// FIXED: Capitalized 'R' to match your exact file name 'leaveRejoin.js'
+const setupLeaveRejoin = require('./leaveRejoin');
 
 // ==========================================
-// 1. RAILWAY HEALTH CHECK WEB SERVER
+// RAILWAY HEALTH CHECK WEB SERVER
 // ==========================================
-// Railway requires an active HTTP server. If your app doesn't bind 
-// to process.env.PORT, Railway will think it crashed and kill it.
 const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end('Mineflayer AFK bot process is active and running!\n');
@@ -18,30 +17,25 @@ server.listen(PORT, () => {
 });
 
 // ==========================================
-// 2. MINEFLAYER BOT CONFIGURATION
+// MINEFLAYER BOT CONFIGURATION
 // ==========================================
 const botOptions = {
-    // Replace this with your exact Seedloaf subdomain
-    host: 'zenmc.seedloaf.gg', 
-    
-    // The username for your bot
-    username: 'devz',
+    host: 'zenmc.seedloaf.gg', // Your Seedloaf server address
+    username: 'AFK_Bot',
 
-    // CRITICAL FOR SEEDLOAF: Do NOT define 'port: 25565'. 
-    // Omitting it forces Mineflayer to look up the new SRV port on every restart.
+    // CRITICAL FOR SEEDLOAF: Do NOT include 'port: 25565'. 
+    // Omitting it forces Mineflayer to resolve your new SRV port on every restart.
 
     // CRITICAL FOR TIMEOUTS: Prevents the "no spawn received" hanging bug
     connectTimeout: 25000,          // Abort connection if login takes over 25 seconds
     checkTimeoutInterval: 30000,    // Force close socket if server goes silent for 30 seconds
-    
-    // Optional: Set your server version explicitly (e.g., '1.20.1') to skip the initial ping
-    version: false                  
+    version: false                  // Auto-detect server version
 };
 
 let bot = null;
 
 // ==========================================
-// 3. CORE BOT INITIALIZATION LOOP
+// CORE BOT INITIALIZATION LOOP
 // ==========================================
 function createBotInstance() {
     console.log(`[Index] Initializing fresh connection to ${botOptions.host}...`);
@@ -59,11 +53,11 @@ function createBotInstance() {
     // Spawn the new Mineflayer bot instance
     bot = mineflayer.createBot(botOptions);
 
-    // Pass the bot and this creation function over to your leavejoin.js script
+    // Pass the bot and this creation function over to your leaveRejoin script
     setupLeaveRejoin(bot, createBotInstance);
 
     // ==========================================
-    // 4. NETWORKING AND LIFECYCLE EVENTS
+    // NETWORKING AND LIFECYCLE EVENTS
     // ==========================================
     bot.on('login', () => {
         console.log('[Index] Logged into server. Awaiting world spawn packet...');
@@ -73,7 +67,7 @@ function createBotInstance() {
         console.log('[Index] Success! Bot has spawned into the Minecraft world.');
     });
 
-    // Catch early network/handshake errors before leavejoin.js can handle them
+    // Catch early network/handshake errors before leaveRejoin can handle them
     bot.on('error', (err) => {
         console.log(`[Index Network Error] ${err.message}`);
         
