@@ -3,12 +3,10 @@ function randomMs(minMs, maxMs) {
 }
 
 function setupLeaveRejoin(bot, createBot) {
-    // Timers
     let leaveTimer = null;
     let lookTimer = null;
     let reconnectTimer = null;
 
-    // State
     let stopped = false;
     let reconnectAttempts = 0;
     let lastLogAt = 0;
@@ -27,30 +25,27 @@ function setupLeaveRejoin(bot, createBot) {
         leaveTimer = lookTimer = null;
     }
 
-    // Safely looks around to update packets without changing physical coordinates
+    // Slowly glancers around to update activity without moving physical blocks
     function executeSafeLook() {
         if (stopped || !bot.entity) return;
 
-        // Generate a random human head angle (Yaw and Pitch)
         const yaw = (Math.random() * Math.PI * 2) - Math.PI;
-        const pitch = (Math.random() * Math.PI / 2) - (Math.PI / 4);
+        const pitch = (Math.random() * Math.PI / 6) - (Math.PI / 12); // subtle head nod
 
-        // Turn the head smoothly without moving blocks
         try {
             if (bot && bot.look) {
                 bot.look(yaw, pitch, true);
             }
         } catch (e) {}
 
-        // Schedule the next look interval safely away from packet thresholds (1 to 3 minutes)
-        const nextLookInterval = randomMs(60000, 180000);
+        const nextLookInterval = randomMs(45000, 120000);
         lookTimer = setTimeout(executeSafeLook, nextLookInterval);
     }
 
     function scheduleReconnect(reason = 'end') {
         if (stopped) return;
 
-        let delay = randomMs(5000, 12000);
+        let delay = randomMs(6000, 15000);
         reconnectAttempts++;
         if (reconnectAttempts > 3) {
             delay += 10000; 
@@ -78,15 +73,24 @@ function setupLeaveRejoin(bot, createBot) {
         stopped = false;
         clearActiveTimers();
 
-        const stayTime = randomMs(120000, 420000);
-        logThrottled(`[AFK] Bot spawned successfully. Session duration: ${Math.round(stayTime / 1000)}s`);
+        // 1. SURVIVAL PHYSICS FIX: Enable engine, but slow it down!
+        if (bot.physics) {
+            bot.physics.enabled = true; // Bot stays on the ground, falls, and obeys gravity
+            
+            // Slow down internal physics ticks slightly to survive cloud connection lag spikes
+            // Default Minecraft tick is 50ms. Setting this to 55-60ms prevents packet burst kicks.
+            bot.physics.mshMaxTickTime = 60; 
+        }
 
-        // Wait 5 seconds after spawn before doing anything
+        const stayTime = randomMs(120000, 420000);
+        logThrottled(`[AFK] Survival Ground Mode active. Session: ${Math.round(stayTime / 1000)}s`);
+
+        // Wait 5 seconds for land blocks to completely load around the bot before moving head
         lookTimer = setTimeout(executeSafeLook, 5000);
 
         leaveTimer = setTimeout(() => {
             if (stopped) return;
-            logThrottled('[AFK] Disconnecting for scheduled cycle...');
+            logThrottled('[AFK] Executing scheduled rotation leave...');
             clearActiveTimers();
             try {
                 bot.quit(); 
