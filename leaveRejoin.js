@@ -9,15 +9,6 @@ function setupLeaveRejoin(bot, createBot) {
 
     let stopped = false;
     let reconnectAttempts = 0;
-    let lastLogAt = 0;
-
-    function logThrottled(msg, minGapMs = 2000) {
-        const now = Date.now();
-        if (now - lastLogAt >= minGapMs) {
-            lastLogAt = now;
-            console.log(msg);
-        }
-    }
 
     function clearActiveTimers() {
         if (leaveTimer) clearTimeout(leaveTimer);
@@ -25,45 +16,38 @@ function setupLeaveRejoin(bot, createBot) {
         leaveTimer = lookTimer = null;
     }
 
-    // Slowly glancers around to update activity without moving physical blocks
     function executeSafeLook() {
         if (stopped || !bot.entity) return;
 
         const yaw = (Math.random() * Math.PI * 2) - Math.PI;
-        const pitch = (Math.random() * Math.PI / 6) - (Math.PI / 12); // subtle head nod
-
+        // Keep head perfectly level to avoid pitch velocity calculation glitches
         try {
             if (bot && bot.look) {
-                bot.look(yaw, pitch, true);
+                bot.look(yaw, 0, true);
             }
         } catch (e) {}
 
-        const nextLookInterval = randomMs(45000, 120000);
+        const nextLookInterval = randomMs(60000, 150000);
         lookTimer = setTimeout(executeSafeLook, nextLookInterval);
     }
 
     function scheduleReconnect(reason = 'end') {
         if (stopped) return;
 
-        let delay = randomMs(6000, 15000);
+        let delay = randomMs(8000, 15000);
         reconnectAttempts++;
-        if (reconnectAttempts > 3) {
-            delay += 10000; 
-        }
+        if (reconnectAttempts > 3) delay += 10000; 
         delay = Math.min(delay, 30000);
 
-        logThrottled(`[AFK] Rejoin scheduled in ${Math.round(delay / 1000)}s (reason: ${reason}, attempt: ${reconnectAttempts})`);
+        console.log(`[AFK] Rejoin loop in ${Math.round(delay / 1000)}s (${reason})`);
 
         if (reconnectTimer) clearTimeout(reconnectTimer);
         reconnectTimer = setTimeout(() => {
             if (stopped) return;
             try {
-                if (typeof createBot === 'function') {
-                    createBot();
-                }
+                if (typeof createBot === 'function') createBot();
             } catch (e) {
-                console.log('[AFK] createBot error:', e?.message || e);
-                scheduleReconnect('createBot-error');
+                scheduleReconnect('retry-error');
             }
         }, delay);
     }
@@ -73,28 +57,23 @@ function setupLeaveRejoin(bot, createBot) {
         stopped = false;
         clearActiveTimers();
 
-        // 1. SURVIVAL PHYSICS FIX: Enable engine, but slow it down!
+        // FULL ENGINE INTERPOLATION LOCKOUT:
+        // Stops Mineflayer from emitting position updates entirely. 
+        // The server will handle all grounding calculations naturally.
         if (bot.physics) {
-            bot.physics.enabled = true; // Bot stays on the ground, falls, and obeys gravity
-            
-            // Slow down internal physics ticks slightly to survive cloud connection lag spikes
-            // Default Minecraft tick is 50ms. Setting this to 55-60ms prevents packet burst kicks.
-            bot.physics.mshMaxTickTime = 60; 
+            bot.physics.enabled = false;
         }
 
-        const stayTime = randomMs(120000, 420000);
-        logThrottled(`[AFK] Survival Ground Mode active. Session: ${Math.round(stayTime / 1000)}s`);
+        const stayTime = randomMs(180000, 480000);
+        console.log(`[AFK] Static Ground Bounds Locked. Duration: ${Math.round(stayTime / 1000)}s`);
 
-        // Wait 5 seconds for land blocks to completely load around the bot before moving head
-        lookTimer = setTimeout(executeSafeLook, 5000);
+        // Wait a generous 8 seconds before touching look orientations
+        lookTimer = setTimeout(executeSafeLook, 8000);
 
         leaveTimer = setTimeout(() => {
             if (stopped) return;
-            logThrottled('[AFK] Executing scheduled rotation leave...');
             clearActiveTimers();
-            try {
-                bot.quit(); 
-            } catch (e) {}
+            try { bot.quit(); } catch (e) {}
         }, stayTime);
     });
 
@@ -105,17 +84,14 @@ function setupLeaveRejoin(bot, createBot) {
     });
 
     bot.on('kicked', (reason) => {
-        console.log(`[Kicked] Server disconnected bot: ${reason}`);
+        console.log(`[Kicked Details] ${reason}`);
         clearActiveTimers();
         bot.removeAllListeners();
         scheduleReconnect('kicked-event');
     });
 
     bot.on('error', (err) => {
-        console.log(`[AFK Error] Network issue: ${err.message}`);
-        try {
-            if (bot && bot.end) bot.end();
-        } catch(e) {}
+        try { if (bot && bot.end) bot.end(); } catch(e) {}
         clearActiveTimers();
         bot.removeAllListeners();
         scheduleReconnect('error-event');
