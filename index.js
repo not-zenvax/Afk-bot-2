@@ -21,7 +21,7 @@ server.listen(PORT, () => {
 // ==========================================
 const botOptions = {
     host: 'zenmc.seedloaf.gg', // Your Seedloaf server address
-    username: 'rezze',       // Change this to your bot's registered ingame name
+    username: 'marine',       // Change this to your bot's registered ingame name
 
     // CRITICAL FOR TIMEOUTS: Prevents the "no spawn received" hanging bug
     connectTimeout: 25000,          // Abort connection if login takes over 25 seconds
