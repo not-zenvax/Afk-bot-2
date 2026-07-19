@@ -22,13 +22,20 @@ function setupLeaveRejoin(bot, createBot) {
         }
     }
 
-    function cleanup() {
-        stopped = true
+    // Clears active movement/leave timers without permanently locking the reconnect state
+    function clearActiveTimers() {
         if (leaveTimer) clearTimeout(leaveTimer)
         if (jumpTimer) clearTimeout(jumpTimer)
         if (jumpOffTimer) clearTimeout(jumpOffTimer)
+        leaveTimer = jumpTimer = jumpOffTimer = null
+    }
+
+    // Fully stops everything (only use if shutting down completely)
+    function fullShutdown() {
+        stopped = true
+        clearActiveTimers()
         if (reconnectTimer) clearTimeout(reconnectTimer)
-        leaveTimer = jumpTimer = jumpOffTimer = reconnectTimer = null
+        reconnectTimer = null
     }
 
     function scheduleNextJump() {
@@ -36,7 +43,9 @@ function setupLeaveRejoin(bot, createBot) {
 
         bot.setControlState('jump', true)
         jumpOffTimer = setTimeout(() => {
-            bot.setControlState('jump', false)
+            if (bot && bot.setControlState) {
+                bot.setControlState('jump', false)
+            }
         }, 300)
 
         // random jump 20s -> 5m
@@ -47,24 +56,26 @@ function setupLeaveRejoin(bot, createBot) {
     function scheduleReconnect(reason = 'end') {
         if (stopped) return
 
-        // FAST RECONNECT: 2s -> 10s (User requested faster)
-        let delay = randomMs(2000, 10000)
+        // Seedloaf takes time to restart. Keep a safe backoff window.
+        let delay = randomMs(5000, 15000)
 
-        // Slight backoff for repeated failures, but keep it snappy
         reconnectAttempts++
         if (reconnectAttempts > 3) {
-            delay += 5000 // Add 5s if it's failing a lot
+            delay += 10000 // Add 10s backoff if the server is offline taking time to boot
         }
 
-        // Cap at 30s max
-        delay = Math.min(delay, 15000)
+        // Cap at 30s max so it doesn't wait forever
+        delay = Math.min(delay, 30000)
 
         logThrottled(`[AFK] Rejoin scheduled in ${Math.round(delay / 1000)}s (reason: ${reason}, attempt: ${reconnectAttempts})`)
 
+        if (reconnectTimer) clearTimeout(reconnectTimer)
         reconnectTimer = setTimeout(() => {
             if (stopped) return
             try {
-                if (typeof createBot === 'function') createBot()
+                if (typeof createBot === 'function') {
+                    createBot()
+                }
             } catch (e) {
                 console.log('[AFK] createBot error:', e?.message || e)
                 scheduleReconnect('createBot-error')
@@ -75,43 +86,47 @@ function setupLeaveRejoin(bot, createBot) {
     bot.once('spawn', () => {
         // reset attempt counter on successful connect
         reconnectAttempts = 0
-
-        // clear any old timers
-        cleanup()
         stopped = false
+        clearActiveTimers()
 
-        // Stay connected: 2 minutes -> 15 minutes (More realistic AFK behavior)
         // Stay connected 1-5 minutes before a scheduled leave/rejoin cycle.
         const stayTime = randomMs(60000, 300000)
-
         logThrottled(`[AFK] Will leave in ${Math.round(stayTime / 1000)} seconds`)
 
         scheduleNextJump()
 
         leaveTimer = setTimeout(() => {
             if (stopped) return
-            logThrottled('[AFK] Leaving server (timer)')
-            cleanup()
+            logThrottled('[AFK] Leaving server (scheduled cycle)')
+            clearActiveTimers()
             try {
-                bot.quit()
+                bot.quit() 
+                // Notice we DO NOT call fullShutdown() here, 
+                // because the 'end' event below will naturally trigger scheduleReconnect()
             } catch (e) {
                 // ignore if already closed
             }
         }, stayTime)
     })
 
-    // When the connection ends for ANY reason, just clean up our timers.
-    // Reconnection is handled by index.js — no duplicate reconnect here.
-    bot.on('end', () => {
-        cleanup()
+    // Clean up active listeners safely on disconnect and trigger reconnection
+    bot.on('end', (reason) => {
+        clearActiveTimers()
+        bot.removeAllListeners() // Prevent memory leaks
+        scheduleReconnect(`end-${reason}`)
     })
 
-    bot.on('kicked', () => {
-        cleanup()
+    bot.on('kicked', (reason) => {
+        clearActiveTimers()
+        bot.removeAllListeners()
+        scheduleReconnect(`kicked-${reason}`)
     })
 
-    bot.on('error', () => {
-        cleanup()
+    bot.on('error', (err) => {
+        console.log(`[AFK Error] network issue: ${err.message}`)
+        clearActiveTimers()
+        bot.removeAllListeners()
+        scheduleReconnect('error-event')
     })
 }
 
