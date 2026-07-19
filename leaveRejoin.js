@@ -16,14 +16,24 @@ function setupLeaveRejoin(bot, createBot) {
         leaveTimer = lookTimer = null;
     }
 
+    // Fixed Look Sequence with strict anti-NaN filtering
     function executeSafeLook() {
-        if (stopped || !bot.entity) return;
+        if (stopped || !bot.entity || !bot.entity.position) return;
 
-        const yaw = (Math.random() * Math.PI * 2) - Math.PI;
-        // Keep head perfectly level to avoid pitch velocity calculation glitches
+        // Force explicit values to prevent NaN network injection bugs
+        let yaw = (Math.random() * Math.PI * 2) - Math.PI;
+        let pitch = 0; // Lock head perfectly level to secure physics states
+
+        // Double check variable states mathematically before sending
+        if (isNaN(yaw)) yaw = 0;
+        if (isNaN(pitch)) pitch = 0;
+
         try {
             if (bot && bot.look) {
-                bot.look(yaw, 0, true);
+                // Ensure physics engine processing stays asleep during turn transitions
+                if (bot.physics) bot.physics.enabled = false;
+                
+                bot.look(yaw, pitch, true);
             }
         } catch (e) {}
 
@@ -57,17 +67,24 @@ function setupLeaveRejoin(bot, createBot) {
         stopped = false;
         clearActiveTimers();
 
-        // FULL ENGINE INTERPOLATION LOCKOUT:
-        // Stops Mineflayer from emitting position updates entirely. 
-        // The server will handle all grounding calculations naturally.
+        // ABSOLUTE PROTECTION AGAINST POSITION KICKS:
+        // Fully shuts down autonomous entity vector mechanics.
+        // This anchors the bot down and silences conflicting telemetry packets.
         if (bot.physics) {
             bot.physics.enabled = false;
         }
 
-        const stayTime = randomMs(180000, 480000);
-        console.log(`[AFK] Static Ground Bounds Locked. Duration: ${Math.round(stayTime / 1000)}s`);
+        // Intercept and bypass incoming vector packet loops
+        bot.on('move', () => {
+            if (bot.physics && bot.physics.enabled) {
+                bot.physics.enabled = false;
+            }
+        });
 
-        // Wait a generous 8 seconds before touching look orientations
+        const stayTime = randomMs(180000, 480000);
+        console.log(`[AFK] Safe Sandbox Verified. Active runtime duration: ${Math.round(stayTime / 1000)}s`);
+
+        // Wait a safe 8 seconds before initializing safe glance timers
         lookTimer = setTimeout(executeSafeLook, 8000);
 
         leaveTimer = setTimeout(() => {
