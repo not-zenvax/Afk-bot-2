@@ -16,24 +16,14 @@ function setupLeaveRejoin(bot, createBot) {
         leaveTimer = lookTimer = null;
     }
 
-    // Fixed Look Sequence with strict anti-NaN filtering
     function executeSafeLook() {
-        if (stopped || !bot.entity || !bot.entity.position) return;
+        if (stopped || !bot.entity) return;
 
-        // Force explicit values to prevent NaN network injection bugs
-        let yaw = (Math.random() * Math.PI * 2) - Math.PI;
-        let pitch = 0; // Lock head perfectly level to secure physics states
-
-        // Double check variable states mathematically before sending
-        if (isNaN(yaw)) yaw = 0;
-        if (isNaN(pitch)) pitch = 0;
-
+        const yaw = (Math.random() * Math.PI * 2) - Math.PI;
         try {
             if (bot && bot.look) {
-                // Ensure physics engine processing stays asleep during turn transitions
-                if (bot.physics) bot.physics.enabled = false;
-                
-                bot.look(yaw, pitch, true);
+                // Keep look vector locked level to protect vanilla positioning packets
+                bot.look(yaw, 0, true);
             }
         } catch (e) {}
 
@@ -49,7 +39,7 @@ function setupLeaveRejoin(bot, createBot) {
         if (reconnectAttempts > 3) delay += 10000; 
         delay = Math.min(delay, 30000);
 
-        console.log(`[AFK] Rejoin loop in ${Math.round(delay / 1000)}s (${reason})`);
+        console.log(`[AFK] Reconnect sequence mapped in ${Math.round(delay / 1000)}s (${reason})`);
 
         if (reconnectTimer) clearTimeout(reconnectTimer);
         reconnectTimer = setTimeout(() => {
@@ -62,35 +52,45 @@ function setupLeaveRejoin(bot, createBot) {
         }, delay);
     }
 
+    // ==========================================
+    // CRITICAL SPEC PACKET WORKAROUND
+    // ==========================================
+    // Intercept physics clock steps and feed back standard protocol updates 
+    // to stop Paper/Purpur servers from flagging network desync errors.
+    bot.on('physicTick', () => {
+        if (stopped) return;
+        
+        // Keep tracking components offline to block automated falling calculations
+        if (bot.physics) bot.physics.enabled = false;
+        
+        try {
+            if (bot._client && bot._client.writable) {
+                // Forces client_tick_end updates to align high-speed cloud packets
+                bot._client.write('tick_end', {});
+            }
+        } catch (err) {}
+    });
+
     bot.once('spawn', () => {
         reconnectAttempts = 0;
         stopped = false;
         clearActiveTimers();
 
-        // ABSOLUTE PROTECTION AGAINST POSITION KICKS:
-        // Fully shuts down autonomous entity vector mechanics.
-        // This anchors the bot down and silences conflicting telemetry packets.
         if (bot.physics) {
             bot.physics.enabled = false;
         }
 
-        // Intercept and bypass incoming vector packet loops
-        bot.on('move', () => {
-            if (bot.physics && bot.physics.enabled) {
-                bot.physics.enabled = false;
-            }
-        });
-
         const stayTime = randomMs(180000, 480000);
-        console.log(`[AFK] Safe Sandbox Verified. Active runtime duration: ${Math.round(stayTime / 1000)}s`);
+        console.log(`[AFK] Network Alignment Safeguard Active. Session: ${Math.round(stayTime / 1000)}s`);
 
-        // Wait a safe 8 seconds before initializing safe glance timers
         lookTimer = setTimeout(executeSafeLook, 8000);
 
         leaveTimer = setTimeout(() => {
             if (stopped) return;
             clearActiveTimers();
-            try { bot.quit(); } catch (e) {}
+            try { 
+                bot.quit(); 
+            } catch (e) {}
         }, stayTime);
     });
 
@@ -101,7 +101,7 @@ function setupLeaveRejoin(bot, createBot) {
     });
 
     bot.on('kicked', (reason) => {
-        console.log(`[Kicked Details] ${reason}`);
+        console.log(`[Kicked Details] Server disconnected handle: ${reason}`);
         clearActiveTimers();
         bot.removeAllListeners();
         scheduleReconnect('kicked-event');
