@@ -7,7 +7,7 @@ const setupLeaveRejoin = require('./leaveRejoin');
 // ==========================================
 const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end('Mineflayer Survival AFK Bot is running!\n');
+    res.end('Survival AFK Bot Online\n');
 });
 
 const PORT = process.env.PORT || 3000;
@@ -20,46 +20,31 @@ server.listen(PORT, () => {
 // ==========================================
 const botOptions = {
     host: 'zenmc.seedloaf.gg', 
-    username: 'AFK_Bot',      // Replace with your exact bot username
-
-    // Explicitly declaring version stops early ping desyncs
-    version: '1.20.1',        // Change this if your server uses a different version
-
+    username: 'AFK_Bot', // Put your bot username here
+    version: '1.20.1',   // Set this to your exact server version to block early pings
     connectTimeout: 30000,          
     checkTimeoutInterval: 35000    
 };
 
 let bot = null;
 
-// ==========================================
-// CORE INITIALIZATION
-// ==========================================
 function createBotInstance() {
-    console.log(`[Index] Launching connection to ${botOptions.host}...`);
+    console.log(`[Index] Connecting to ${botOptions.host}...`);
     
     if (bot) {
-        try {
-            bot.quit();
-        } catch (e) {}
+        try { bot.quit(); } catch (e) {}
         bot.removeAllListeners();
     }
 
     bot = mineflayer.createBot(botOptions);
-    
-    // Mount the structural protection loop immediately
     setupLeaveRejoin(bot, createBotInstance);
 
-    bot.on('login', () => {
-        console.log('[Index] Logged in. Synchronizing terrain chunks...');
-    });
-
     bot.on('spawn', () => {
-        console.log('[Index] Spawned successfully inside the world grid.');
+        console.log('[Index] Spawned successfully. Locking positional coordinates...');
         
-        // Change to survival safely 3 seconds after complete world placement
+        // Change to survival 3 seconds after complete world positioning
         setTimeout(() => {
             if (bot && bot.chat) {
-                console.log('[Index] Setting survival gamemode state...');
                 bot.chat('/gamemode survival');
             }
         }, 3000);
@@ -68,9 +53,7 @@ function createBotInstance() {
     bot.on('error', (err) => {
         console.log(`[Index Error] ${err.message}`);
         if (err.message.includes('timeout') || err.message.includes('spawn')) {
-            try {
-                if (bot && bot.end) bot.end();
-            } catch (e) {}
+            try { if (bot && bot.end) bot.end(); } catch (e) {}
         }
     });
 }
